@@ -1,4 +1,4 @@
--- Delta Executor Ultimate Client-Side Script
+-- Delta Executor Ultimate Client-Side Script v3 (Highly Compatible)
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
@@ -11,7 +11,7 @@ if CoreGui:FindFirstChild("MineSimulatorHub") then
 	CoreGui.MineSimulatorHub:Destroy()
 end
 
--- 1. CREATE DRAGGABLE MOBILE UI (Slightly larger to fit new features)
+-- 1. CREATE DRAGGABLE MOBILE UI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MineSimulatorHub"
 ScreenGui.Parent = CoreGui
@@ -24,13 +24,13 @@ MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BorderSizePixel = 2
 MainFrame.BorderColor3 = Color3.fromRGB(0, 255, 150)
 MainFrame.Active = true
-MainFrame.Draggable = true -- Easy dragging on mobile screens
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
 Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-Title.Text = "  ⚡ Mine Hub Premium v2"
+Title.Text = "  ⚡ Mine Hub Premium v3"
 Title.TextColor3 = Color3.fromRGB(0, 255, 150)
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Font = Enum.Font.SourceSansBold
@@ -52,11 +52,10 @@ local ContentFrame = Instance.new("ScrollingFrame")
 ContentFrame.Size = UDim2.new(1, 0, 1, -35)
 ContentFrame.Position = UDim2.new(0, 0, 0, 35)
 ContentFrame.BackgroundTransparency = 1
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 420) -- Scrollable area
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, 420)
 ContentFrame.ScrollBarThickness = 4
 ContentFrame.Parent = MainFrame
 
--- Helper to make buttons easily
 local function createButton(name, text, pos, parent)
 	local btn = Instance.new("TextButton")
 	btn.Name = name
@@ -69,11 +68,9 @@ local function createButton(name, text, pos, parent)
 	btn.TextSize = 14
 	btn.Parent = parent
 	
-	-- Rounded Corners
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = btn
-	
 	return btn
 end
 
@@ -116,7 +113,6 @@ local autoClickActive = false
 local autoRebirthActive = false
 local autoCollectActive = false
 
--- Color Helper for Toggles
 local function updateToggleVisual(btn, active, onText, offText)
 	if active then
 		btn.Text = onText
@@ -140,13 +136,14 @@ task.spawn(function()
 		task.wait(0.05)
 		if autoClickActive then
 			pcall(function()
-				-- Try firing event direct
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
-				local clickEvent = ReplicatedStorage:FindFirstChild("ClickEvent", true) or ReplicatedStorage:FindFirstChild("Click", true)
-				if clickEvent and clickEvent:IsA("RemoteEvent") then
-					clickEvent:FireServer()
+				-- Dynamic Remote Search for Clicking
+				for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+					if v:IsA("RemoteEvent") and (v.Name:lower():find("click") or v.Name:lower():find("mine") or v.Name:lower():find("tap") or v.Name:lower():find("swing")) then
+						v:FireServer()
+					end
 				end
-				-- Activate tool in hand
+				-- Tool Activation fallback
 				local character = LocalPlayer.Character
 				if character then
 					local tool = character:FindFirstChildOfClass("Tool")
@@ -157,7 +154,7 @@ task.spawn(function()
 	end
 end)
 
--- Auto-Rebirth Logic
+-- Improved Auto-Rebirth (Dynamic Search)
 AutoRebirthBtn.MouseButton1Click:Connect(function()
 	autoRebirthActive = not autoRebirthActive
 	updateToggleVisual(AutoRebirthBtn, autoRebirthActive, "Auto Rebirth: ACTIVE", "Auto Rebirth: OFF")
@@ -165,20 +162,29 @@ end)
 
 task.spawn(function()
 	while true do
-		task.wait(0.8)
+		task.wait(1.5) -- Safety delay to prevent crash
 		if autoRebirthActive then
 			pcall(function()
 				local ReplicatedStorage = game:GetService("ReplicatedStorage")
-				local rebirthEvent = ReplicatedStorage:FindFirstChild("RebirthRequest", true) or ReplicatedStorage:FindFirstChild("Rebirth", true)
-				if rebirthEvent and rebirthEvent:IsA("RemoteEvent") then
-					rebirthEvent:FireServer()
+				-- Dynamic Search across ALL ReplicatedStorage folders
+				for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+					if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+						local name = v.Name:lower()
+						if name:find("rebirth") or name:find("prestige") or name:find("ascend") then
+							if v:IsA("RemoteEvent") then
+								v:FireServer()
+							else
+								v:InvokeServer()
+							end
+						end
+					end
 				end
 			end)
 		end
 	end
 end)
 
--- Auto-Collect Items Logic
+-- Improved Auto-Collect Items (Workspace Vacuum)
 AutoCollectBtn.MouseButton1Click:Connect(function()
 	autoCollectActive = not autoCollectActive
 	updateToggleVisual(AutoCollectBtn, autoCollectActive, "Auto Collecting Items...", "Auto Collect Items: OFF")
@@ -193,18 +199,29 @@ task.spawn(function()
 				local root = char and char:FindFirstChild("HumanoidRootPart")
 				if not root then return end
 
-				-- Scan the game workspace for things to collect (drops, tokens, parts, coins, or crystals)
+				-- Scan workspace for items
 				for _, obj in ipairs(Workspace:GetDescendants()) do
+					-- Check if the object contains a TouchTransmitter (things you need to walk over to pick up)
 					if obj:IsA("TouchTransmitter") then
 						local parent = obj.Parent
 						if parent and parent:IsA("BasePart") then
-							-- Instant teleport-collection
-							parent.CFrame = root.CFrame
+							-- Bring the collectible part directly to your character's position
+							firetouchinterest(root, parent, 0)
+							firetouchinterest(root, parent, 1)
 						end
-					elseif obj:IsA("BasePart") and (obj.Name:lower():find("coin") or obj.Name:lower():find("gem") or obj.Name:lower():find("crystal") or obj.Name:lower():find("token")) then
-						-- Teleport direct to item if we can't bring it to us
-						root.CFrame = obj.CFrame + Vector3.new(0, 1, 0)
-						task.wait(0.05)
+					-- Or look directly for names matching items
+					elseif obj:IsA("BasePart") then
+						local name = obj.Name:lower()
+						if name:find("coin") or name:find("gem") or name:find("crystal") or name:find("token") or name:find("ore") or name:find("boost") or name:find("loot") then
+							-- Fire touch events safely via Executor exploit functions
+							if firetouchinterest then
+								firetouchinterest(root, obj, 0)
+								firetouchinterest(root, obj, 1)
+							else
+								-- Fallback: pull it to you physically
+								obj.CFrame = root.CFrame
+							end
+						end
 					end
 				end
 			end)
@@ -218,7 +235,6 @@ TeleportSafeBtn.MouseButton1Click:Connect(function()
 		local char = LocalPlayer.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if root then
-			-- Creates a simple temporary safe brick high up in the sky to stand on
 			local safePart = Workspace:FindFirstChild("SafePlatform")
 			if not safePart then
 				safePart = Instance.new("Part", Workspace)
@@ -269,7 +285,7 @@ JumpBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Anti-Lag Feature (Deletes heavy parts on your screen for mobile performance)
+-- Anti-Lag Feature
 AntiLagBtn.MouseButton1Click:Connect(function()
 	pcall(function()
 		for _, v in ipairs(Workspace:GetDescendants()) do
