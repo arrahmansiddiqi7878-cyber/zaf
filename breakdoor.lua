@@ -144,34 +144,119 @@ VisualsTab:CreateToggle({
 })
 
 ---------------------------------------------------------------------
--- 4. AUTOMATION (Auto-Collect Boxes & Prompts)
+-- 4. AUTOMATION (Auto-Collect, Auto-Repair, & Base Teleport)
 ---------------------------------------------------------------------
 local autoCollect = false
+local autoRepair = false
+local savedBaseCFrame = nil
 
+-- Set Base Position Button
+AutomationTab:CreateButton({
+   Name = "Set Current Position as Base",
+   Callback = function()
+       local char = game.Players.LocalPlayer.Character
+       local root = char and char:FindFirstChild("HumanoidRootPart")
+       if root then
+           savedBaseCFrame = root.CFrame
+           Rayfield:Notify({
+               Title = "Base Saved",
+               Content = "Your current position has been saved as Base!",
+               Duration = 3,
+               Image = 4483362458,
+           })
+       end
+   end,
+})
+
+-- Teleport to Base Button
+AutomationTab:CreateButton({
+   Name = "Teleport to Base",
+   Callback = function()
+       local char = game.Players.LocalPlayer.Character
+       local root = char and char:FindFirstChild("HumanoidRootPart")
+       
+       if savedBaseCFrame and root then
+           root.CFrame = savedBaseCFrame + Vector3.new(0, 3, 0)
+       else
+           -- Fallback: Searches for workspace Base/Spawn objects if no custom position was set
+           local spawnPoint = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChild("Base")
+           if spawnPoint and root then
+               root.CFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0)
+           else
+               Rayfield:Notify({
+                   Title = "Teleport Failed",
+                   Content = "Please click 'Set Current Position as Base' first!",
+                   Duration = 3,
+                   Image = 4483362458,
+               })
+           end
+       end
+   end,
+})
+
+-- Auto-Repair Toggle
+AutomationTab:CreateToggle({
+   Name = "Auto-Repair (Doors/Structures)",
+   CurrentValue = false,
+   Flag = "AutoRepairFlag",
+   Callback = function(Value)
+       autoRepair = Value
+       if autoRepair then
+           task.spawn(function()
+               while autoRepair do
+                   local char = game.Players.LocalPlayer.Character
+                   local root = char and char:FindFirstChild("HumanoidRootPart")
+                   
+                   if root then
+                       for _, prompt in pairs(workspace:GetDescendants()) do
+                           if prompt:IsA("ProximityPrompt") and prompt.Parent then
+                               local name = prompt.Parent.Name:lower()
+                               local action = prompt.ActionText:lower()
+                               
+                               -- Target repair prompts or door interactions
+                               if name:find("repair") or name:find("door") or action:find("repair") or action:find("fix") then
+                                   local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
+                                   if part and (root.Position - part.Position).Magnitude <= prompt.MaxActivationDistance then
+                                       fireproximityprompt(prompt)
+                                   end
+                               end
+                           end
+                       end
+                   end
+                   task.wait(0.3)
+               end
+           end)
+       end
+   end,
+})
+
+-- Auto-Collect Proximity Prompts
 AutomationTab:CreateToggle({
    Name = "Auto-Collect Proximity Prompts",
    CurrentValue = false,
    Flag = "AutoCollectFlag",
    Callback = function(Value)
        autoCollect = Value
-       task.spawn(function()
-           while autoCollect do
-               local char = game.Players.LocalPlayer.Character
-               local root = char and char:FindFirstChild("HumanoidRootPart")
-               if root then
-                   for _, prompt in pairs(workspace:GetDescendants()) do
-                       if prompt:IsA("ProximityPrompt") and prompt.Parent then
-                           local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
-                           if part then
-                               if (root.Position - part.Position).Magnitude <= 15 then
-                                   fireproximityprompt(prompt)
+       if autoCollect then
+           task.spawn(function()
+               while autoCollect do
+                   local char = game.Players.LocalPlayer.Character
+                   local root = char and char:FindFirstChild("HumanoidRootPart")
+                   if root then
+                       for _, prompt in pairs(workspace:GetDescendants()) do
+                           if prompt:IsA("ProximityPrompt") and prompt.Parent then
+                               local part = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
+                               if part then
+                                   if (root.Position - part.Position).Magnitude <= 15 then
+                                       fireproximityprompt(prompt)
+                                   end
                                end
                            end
                        end
                    end
+                   task.wait(0.5)
                end
-               task.wait(0.5)
-           end
-       end)
+           end)
+       end
    end,
 })
