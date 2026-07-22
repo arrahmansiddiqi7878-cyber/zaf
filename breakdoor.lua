@@ -14,7 +14,7 @@ local VisualsTab = Window:CreateTab("Visuals (ESP)", 4483362458)
 local AutomationTab = Window:CreateTab("Automation", 4483362458)
 
 ---------------------------------------------------------------------
--- HELPER FUNCTIONS (Proximity Prompt Handling)
+-- HELPER FUNCTIONS
 ---------------------------------------------------------------------
 local function getPromptPos(prompt)
     local parent = prompt.Parent
@@ -35,9 +35,26 @@ end
 local function interactPrompt(prompt)
     if prompt and prompt.Enabled and fireproximityprompt then
         pcall(function()
-            -- Force instant interaction by bypassing hold timers
             prompt.HoldDuration = 0
             fireproximityprompt(prompt)
+        end)
+    end
+end
+
+local function clickGuiButton(button)
+    if button and button.Visible then
+        pcall(function()
+            if firesignal then
+                firesignal(button.MouseButton1Click)
+                firesignal(button.Activated)
+            elseif getconnections then
+                for _, conn in pairs(getconnections(button.MouseButton1Click)) do
+                    conn:Fire()
+                end
+                for _, conn in pairs(getconnections(button.Activated)) do
+                    conn:Fire()
+                end
+            end
         end)
     end
 end
@@ -221,9 +238,9 @@ AutomationTab:CreateButton({
    end,
 })
 
--- Auto-Repair Toggle
+-- Auto-Repair Toggle (Handles UI Button & Proximity Prompts)
 AutomationTab:CreateToggle({
-   Name = "Auto-Repair (Doors & Barriers)",
+   Name = "Auto-Repair (UI Button & Doors)",
    CurrentValue = false,
    Flag = "AutoRepairFlag",
    Callback = function(Value)
@@ -232,20 +249,32 @@ AutomationTab:CreateToggle({
            task.spawn(function()
                while autoRepair do
                    pcall(function()
+                       -- 1. Check PlayerGui for Screen Repair Buttons (Green Wrench)
+                       local playerGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+                       if playerGui then
+                           for _, element in pairs(playerGui:GetDescendants()) do
+                               if (element:IsA("ImageButton") or element:IsA("TextButton")) and element.Visible then
+                                   local name = element.Name:lower()
+                                   if name:find("repair") or name:find("fix") or name:find("wrench") then
+                                       clickGuiButton(element)
+                                   end
+                               end
+                           end
+                       end
+
+                       -- 2. Check Workspace for 3D Proximity Repair Prompts
                        local char = game.Players.LocalPlayer.Character
                        local root = char and char:FindFirstChild("HumanoidRootPart")
-                       
                        if root then
                            for _, prompt in pairs(workspace:GetDescendants()) do
                                if prompt:IsA("ProximityPrompt") then
-                                   local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
                                    local actionText = prompt.ActionText:lower()
                                    local objectText = prompt.ObjectText:lower()
                                    
-                                   -- Expanded checks for repair/fortify/fix terms
-                                   local isRepairPrompt = actionText:find("repair") or actionText:find("fix") or actionText:find("rebuild") or actionText:find("board") or actionText:find("fortify") or parentName:find("door") or parentName:find("repair") or objectText:find("door")
+                                   local isUpgrade = actionText:find("upgrade") or objectText:find("upgrade") or actionText:find("level")
+                                   local isRepair = actionText:find("repair") or actionText:find("fix") or actionText:find("rebuild") or actionText:find("board") or actionText:find("fortify")
                                    
-                                   if isRepairPrompt then
+                                   if isRepair and not isUpgrade then
                                        local pos = getPromptPos(prompt)
                                        if pos and (root.Position - pos).Magnitude <= (prompt.MaxActivationDistance + 5) then
                                            interactPrompt(prompt)
@@ -262,9 +291,9 @@ AutomationTab:CreateToggle({
    end,
 })
 
--- Auto-Collect All Boxes & Items
+-- Auto-Collect Boxes & Items
 AutomationTab:CreateToggle({
-   Name = "Auto-Collect (Boxes & Items)",
+   Name = "Auto-Collect (Boxes & Cash)",
    CurrentValue = false,
    Flag = "AutoCollectFlag",
    Callback = function(Value)
@@ -279,11 +308,15 @@ AutomationTab:CreateToggle({
                        if root then
                            for _, prompt in pairs(workspace:GetDescendants()) do
                                if prompt:IsA("ProximityPrompt") then
-                                   local pos = getPromptPos(prompt)
-                                   if pos then
-                                       local dist = (root.Position - pos).Magnitude
-                                       -- Triggers any prompt within active range
-                                       if dist <= maxInteractDistance then
+                                   local actionText = prompt.ActionText:lower()
+                                   local objectText = prompt.ObjectText:lower()
+                                   
+                                   local isUpgrade = actionText:find("upgrade") or objectText:find("upgrade") or actionText:find("level")
+                                   local isCollect = actionText:find("collect") or actionText:find("take") or actionText:find("grab") or actionText:find("pickup") or actionText:find("open") or objectText:find("box") or objectText:find("crate") or objectText:find("gold") or objectText:find("cash") or objectText:find("money")
+                                   
+                                   if isCollect and not isUpgrade then
+                                       local pos = getPromptPos(prompt)
+                                       if pos and (root.Position - pos).Magnitude <= maxInteractDistance then
                                            interactPrompt(prompt)
                                        end
                                    end
@@ -291,7 +324,7 @@ AutomationTab:CreateToggle({
                            end
                        end
                    end)
-                   task.wait(0.2)
+                   task.wait(0.3)
                end
            end)
        end
