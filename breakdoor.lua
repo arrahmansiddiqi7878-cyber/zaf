@@ -1,236 +1,57 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local R = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local W = R:CreateWindow({Name = "BreakDoor Utility Hub", LoadingTitle = "Loading...", ConfigurationSaving = {Enabled = false}})
+local CT, MT, VT, AT = W:CreateTab("Combat & Utility", 4483362458), W:CreateTab("Movement", 4483362458), W:CreateTab("Visuals (ESP)", 4483362458), W:CreateTab("Automation", 4483362458)
 
-local Window = Rayfield:CreateWindow({
-   Name = "BreakDoor Utility Hub",
-   Icon = 0,
-   LoadingTitle = "Loading Script...",
-   LoadingSubtitle = "by arrahmansiddiqi7878-cyber",
-   Theme = "Default",
-   DisableRayfieldPrompts = false,
-   DisableBuildWarnings = false,
-   ConfigurationSaving = { Enabled = false },
-   KeySystem = false
-})
+local P, RS, WS, LP = game:GetService("Players"), game:GetService("RunService"), game:GetService("Workspace"), game:GetService("Players").LocalPlayer
+local baseCFrame, noclip, aura, auraR, targetMode, autoRecall, speedLoop, speedVal, esp, autoRep, autoCol, colR = nil, false, false, 50, "Other Players (Demon Mode)", false, false, 16, false, false, 50
 
--- Tabs Setup
-local CombatTab = Window:CreateTab("Combat & Utility", 4483362458)
-local MovementTab = Window:CreateTab("Movement", 4483362458)
-local VisualsTab = Window:CreateTab("Visuals (ESP)", 4483362458)
-local AutomationTab = Window:CreateTab("Automation", 4483362458)
+local function getPos(p) local par = p.Parent return not par and nil or (par:IsA("BasePart") and par.Position or (par:IsA("Model") and par:GetPivot().Position) or (par:IsA("Attachment") and par.WorldPosition) or (par:FindFirstChildWhichIsA("BasePart", true) and par:FindFirstChildWhichIsA("BasePart", true).Position)) end
+local function intPrompt(p) if p and p.Enabled and fireproximityprompt then pcall(function() p.HoldDuration = 0 fireproximityprompt(p) end) end end
 
----------------------------------------------------------------------
--- SERVICES & SHARED VARIABLES
----------------------------------------------------------------------
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
+-- 1. Combat
+RS.Stepped:Connect(function() if noclip and LP.Character then for _, v in pairs(LP.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end end)
+CT:CreateToggle({Name = "Noclip", CurrentValue = false, Callback = function(v) noclip = v end})
 
-local savedBaseCFrame = nil
-
----------------------------------------------------------------------
--- HELPER FUNCTIONS
----------------------------------------------------------------------
-local function getPromptPos(prompt)
-    local parent = prompt.Parent
-    if not parent then return nil end
-    
-    if parent:IsA("BasePart") then
-        return parent.Position
-    elseif parent:IsA("Model") then
-        return parent:GetPivot().Position
-    elseif parent:IsA("Attachment") then
-        return parent.WorldPosition
-    else
-        local part = parent:FindFirstChildWhichIsA("BasePart", true)
-        return part and part.Position or nil
-    end
-end
-
-local function interactPrompt(prompt)
-    if prompt and prompt.Enabled and fireproximityprompt then
+CT:CreateToggle({Name = "Emergency Base Teleport", CurrentValue = false, Callback = function(v) autoRecall = v end})
+RS.Heartbeat:Connect(function()
+    if autoRecall and LP.Character then
         pcall(function()
-            prompt.HoldDuration = 0
-            fireproximityprompt(prompt)
-        end)
-    end
-end
-
-local function forceClickGuiButton(button)
-    pcall(function()
-        if firesignal then
-            firesignal(button.MouseButton1Click)
-            firesignal(button.Activated)
-            firesignal(button.InputBegan)
-        end
-        if getconnections then
-            for _, conn in pairs(getconnections(button.MouseButton1Click)) do conn:Fire() end
-            for _, conn in pairs(getconnections(button.Activated)) do conn:Fire() end
-            for _, conn in pairs(getconnections(button.InputBegan)) do conn:Fire() end
-        end
-    end)
-end
-
----------------------------------------------------------------------
--- 1. COMBAT & UTILITY
----------------------------------------------------------------------
-local noclipEnabled = false
-local attackAuraEnabled = false
-local attackRange = 50
-local targetMode = "Other Players (Demon Mode)"
-local autoRecallEnabled = false
-local recallCooldown = false
-
-RunService.Stepped:Connect(function()
-    if noclipEnabled and LocalPlayer.Character then
-        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
-CombatTab:CreateToggle({
-   Name = "Noclip (Walk Through Walls)",
-   CurrentValue = false,
-   Flag = "NoclipFlag",
-   Callback = function(Value)
-       noclipEnabled = Value
-   end,
-})
-
-local function getPlayerRole()
-    local char = LocalPlayer.Character
-    if LocalPlayer.Team then
-        local teamName = LocalPlayer.Team.Name:lower()
-        if teamName:find("demon") then return "Demon" end
-        if teamName:find("human") then return "Human" end
-    end
-    local raceAttr = LocalPlayer:GetAttribute("Race") or (char and char:GetAttribute("Race"))
-    if raceAttr and tostring(raceAttr):lower():find("demon") then return "Demon" end
-    return "Human"
-end
-
-CombatTab:CreateToggle({
-   Name = "Emergency Base Teleport (Role-Based)",
-   CurrentValue = false,
-   Flag = "GodRecallFlag",
-   Callback = function(Value)
-       autoRecallEnabled = Value
-   end,
-})
-
-RunService.Heartbeat:Connect(function()
-    if autoRecallEnabled and not recallCooldown then
-        pcall(function()
-            local char = LocalPlayer.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-
-            if hum and root and hum.Health > 0 then
-                local hpPercent = (hum.Health / hum.MaxHealth) * 100
-                local currentRole = getPlayerRole()
-                local requiredThreshold = (currentRole == "Demon") and 25 or 50
-                
-                if hpPercent <= requiredThreshold then
-                    recallCooldown = true
-                    local targetCFrame = savedBaseCFrame and (savedBaseCFrame + Vector3.new(0, 3, 0)) or nil
-                    if not targetCFrame then
-                        local spawnPoint = Workspace:FindFirstChild("SpawnLocation") or Workspace:FindFirstChild("Base")
-                        if spawnPoint then targetCFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0) end
-                    end
-
-                    if targetCFrame then
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
-                        root.CFrame = targetCFrame
-                        Rayfield:Notify({
-                            Title = "🚨 EMERGENCY RECALL",
-                            Content = string.format("[%s] HP dropped below %d%%! Teleported.", currentRole, requiredThreshold),
-                            Duration = 4,
-                            Image = 4483362458,
-                        })
-                    end
-                    task.delay(5, function() recallCooldown = false end)
-                end
+            local hum, root = LP.Character:FindFirstChildOfClass("Humanoid"), LP.Character:FindFirstChild("HumanoidRootPart")
+            local isDemon = (LP.Team and LP.Team.Name:lower():find("demon")) or tostring(LP:GetAttribute("Race") or ""):lower():find("demon")
+            if hum and root and hum.Health > 0 and (hum.Health/hum.MaxHealth)*100 <= (isDemon and 25 or 50) then
+                root.CFrame = (baseCFrame or (WS:FindFirstChild("SpawnLocation") or WS:FindFirstChild("Base")).CFrame) + Vector3.new(0, 3, 0)
+                R:Notify({Title = "EMERGENCY RECALL", Content = "HP low! Teleported to base.", Duration = 4})
+                task.wait(5)
             end
         end)
     end
 end)
 
-CombatTab:CreateDropdown({
-   Name = "Aura Target Mode",
-   Options = {"Other Players (Demon Mode)", "NPC Monsters", "All (NPCs & Players)"},
-   CurrentOption = {"Other Players (Demon Mode)"},
-   MultipleOptions = false,
-   Flag = "TargetModeDropdown",
-   Callback = function(Option)
-       targetMode = type(Option) == "table" and Option[1] or Option
-   end,
-})
-
-CombatTab:CreateToggle({
-   Name = "Enable Far-Range Attack Aura",
-   CurrentValue = false,
-   Flag = "AttackAuraFlag",
-   Callback = function(Value)
-       attackAuraEnabled = Value
-   end,
-})
-
-CombatTab:CreateSlider({
-   Name = "Attack Range (Studs)",
-   Range = {10, 100},
-   Increment = 5,
-   Suffix = "studs",
-   CurrentValue = 50,
-   Flag = "AuraRangeFlag",
-   Callback = function(Value)
-       attackRange = Value
-   end,
-})
+CT:CreateDropdown({Name = "Aura Target Mode", Options = {"Other Players (Demon Mode)", "NPC Monsters", "All (NPCs & Players)"}, CurrentOption = {targetMode}, Callback = function(o) targetMode = type(o)=="table" and o[1] or o end})
+CT:CreateToggle({Name = "Enable Attack Aura", CurrentValue = false, Callback = function(v) aura = v end})
+CT:CreateSlider({Name = "Attack Range", Range = {10, 100}, Increment = 5, CurrentValue = 50, Callback = function(v) auraR = v end})
 
 task.spawn(function()
     while true do
-        if attackAuraEnabled then
+        if aura and LP.Character then
             pcall(function()
-                local char = LocalPlayer.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                local tool = char and char:FindFirstChildOfClass("Tool")
-                
-                if not tool then
-                    local backpack = LocalPlayer:FindFirstChild("Backpack")
-                    tool = backpack and backpack:FindFirstChildOfClass("Tool")
-                    if tool and hum then hum:EquipTool(tool) end
-                end
-
+                local root, hum = LP.Character:FindFirstChild("HumanoidRootPart"), LP.Character:FindFirstChildOfClass("Humanoid")
+                local tool = LP.Character:FindFirstChildOfClass("Tool") or (LP.Backpack and LP.Backpack:FindFirstChildOfClass("Tool"))
+                if not LP.Character:FindFirstChildOfClass("Tool") and tool and hum then hum:EquipTool(tool) end
                 if root and tool then
                     if targetMode ~= "NPC Monsters" then
-                        for _, player in pairs(Players:GetPlayers()) do
-                            if player ~= LocalPlayer and player.Character then
-                                local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
-                                local targetHum = player.Character:FindFirstChildOfClass("Humanoid")
-                                if targetRoot and targetHum and targetHum.Health > 0 then
-                                    if (root.Position - targetRoot.Position).Magnitude <= attackRange then
-                                        tool:Activate()
-                                    end
-                                end
+                        for _, p in pairs(P:GetPlayers()) do
+                            if p ~= LP and p.Character then
+                                local tr, th = p.Character:FindFirstChild("HumanoidRootPart"), p.Character:FindFirstChildOfClass("Humanoid")
+                                if tr and th and th.Health > 0 and (root.Position - tr.Position).Magnitude <= auraR then tool:Activate() end
                             end
                         end
                     end
-
                     if targetMode ~= "Other Players (Demon Mode)" then
-                        for _, obj in pairs(Workspace:GetDescendants()) do
-                            if obj:IsA("Humanoid") and obj.Parent ~= char and obj.Health > 0 then
-                                local targetChar = obj.Parent
-                                if not Players:GetPlayerFromCharacter(targetChar) then
-                                    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildWhichIsA("BasePart")
-                                    if targetRoot and (root.Position - targetRoot.Position).Magnitude <= attackRange then
-                                        tool:Activate()
-                                    end
-                                end
+                        for _, obj in pairs(WS:GetDescendants()) do
+                            if obj:IsA("Humanoid") and obj.Parent ~= LP.Character and obj.Health > 0 and not P:GetPlayerFromCharacter(obj.Parent) then
+                                local tr = obj.Parent:FindFirstChild("HumanoidRootPart") or obj.Parent:FindFirstChildWhichIsA("BasePart")
+                                if tr and (root.Position - tr.Position).Magnitude <= auraR then tool:Activate() end
                             end
                         end
                     end
@@ -241,204 +62,53 @@ task.spawn(function()
     end
 end)
 
----------------------------------------------------------------------
--- 2. MOVEMENT SETTINGS
----------------------------------------------------------------------
-local targetWalkSpeed = 16
-local speedLoopEnabled = false
+-- 2. Movement
+RS.RenderStepped:Connect(function() if speedLoop and LP.Character and LP.Character:FindFirstChildOfClass("Humanoid") then LP.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = speedVal end end)
+MT:CreateToggle({Name = "Speed Loop", CurrentValue = false, Callback = function(v) speedLoop = v end})
+MT:CreateSlider({Name = "WalkSpeed", Range = {16, 120}, Increment = 1, CurrentValue = 16, Callback = function(v) speedVal = v end})
 
-RunService.RenderStepped:Connect(function()
-    if speedLoopEnabled and LocalPlayer.Character then
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = targetWalkSpeed end
-    end
-end)
-
-MovementTab:CreateToggle({
-   Name = "Enable Speed Loop (Anti-Slowdown)",
-   CurrentValue = false,
-   Flag = "SpeedLoopToggle",
-   Callback = function(Value) speedLoopEnabled = Value end,
-})
-
-MovementTab:CreateSlider({
-   Name = "WalkSpeed",
-   Range = {16, 120},
-   Increment = 1,
-   Suffix = "Speed",
-   CurrentValue = 16,
-   Flag = "SpeedFlag",
-   Callback = function(Value) targetWalkSpeed = Value end,
-})
-
----------------------------------------------------------------------
--- 3. VISUAL HIGHLIGHTS
----------------------------------------------------------------------
-local espEnabled = false
-
-local function applyESP(player)
-    if player == LocalPlayer then return end
-    local function setupChar(char)
-        if char and not char:FindFirstChild("ESPHighlight") then
-            local highlight = Instance.new("Highlight")
-            highlight.Name = "ESPHighlight"
-            highlight.FillColor = Color3.fromRGB(255, 0, 0)
-            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-            highlight.FillTransparency = 0.5
-            highlight.Parent = char
-        end
-    end
-    if player.Character then setupChar(player.Character) end
-    player.CharacterAdded:Connect(function(char)
-        if espEnabled then setupChar(char) end
-    end)
+-- 3. Visuals
+local function applyESP(p)
+    if p == LP then return end
+    local function setup(c) if c and not c:FindFirstChild("ESP") then local h = Instance.new("Highlight", c) h.Name, h.FillColor, h.FillTransparency = "ESP", Color3.fromRGB(255, 0, 0), 0.5 end end
+    if p.Character then setup(p.Character) end
+    p.CharacterAdded:Connect(function(c) if esp then setup(c) end end)
 end
+for _, p in pairs(P:GetPlayers()) do applyESP(p) end
+P.PlayerAdded:Connect(applyESP)
 
-for _, p in pairs(Players:GetPlayers()) do applyESP(p) end
-Players.PlayerAdded:Connect(applyESP)
-
-VisualsTab:CreateToggle({
-   Name = "Demon & Player Highlights",
-   CurrentValue = false,
-   Flag = "ESPFlag",
-   Callback = function(Enabled)
-       espEnabled = Enabled
-       for _, player in pairs(Players:GetPlayers()) do
-           if player ~= LocalPlayer and player.Character then
-               local hl = player.Character:FindFirstChild("ESPHighlight")
-               if Enabled and not hl then
-                   local highlight = Instance.new("Highlight")
-                   highlight.Name = "ESPHighlight"
-                   highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                   highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                   highlight.FillTransparency = 0.5
-                   highlight.Parent = player.Character
-               elseif not Enabled and hl then
-                   hl:Destroy()
-               end
-           end
-       end
-   end,
-})
-
----------------------------------------------------------------------
--- 4. AUTOMATION
----------------------------------------------------------------------
-local autoCollectAura = false
-local autoRepair = false
-local collectAuraRange = 50
-
-AutomationTab:CreateButton({
-   Name = "Set Current Position as Base",
-   Callback = function()
-       local char = LocalPlayer.Character
-       local root = char and char:FindFirstChild("HumanoidRootPart")
-       if root then
-           savedBaseCFrame = root.CFrame
-           Rayfield:Notify({Title = "Base Saved", Content = "Current position saved as Base!", Duration = 3, Image = 4483362458})
-       end
-   end,
-})
-
-AutomationTab:CreateButton({
-   Name = "Teleport to Base",
-   Callback = function()
-       local char = LocalPlayer.Character
-       local root = char and char:FindFirstChild("HumanoidRootPart")
-       if savedBaseCFrame and root then
-           root.CFrame = savedBaseCFrame + Vector3.new(0, 3, 0)
-       else
-           local spawnPoint = Workspace:FindFirstChild("SpawnLocation") or Workspace:FindFirstChild("Base")
-           if spawnPoint and root then
-               root.CFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0)
-           else
-               Rayfield:Notify({Title = "Teleport Failed", Content = "Save a base first!", Duration = 3, Image = 4483362458})
-           end
-       end
-   end,
-})
-
-AutomationTab:CreateToggle({
-   Name = "Auto-Repair Door",
-   CurrentValue = false,
-   Flag = "AutoRepairFlag",
-   Callback = function(Value) autoRepair = Value end,
-})
-
-task.spawn(function()
-    while true do
-        if autoRepair then
-            pcall(function()
-                local char = LocalPlayer.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    for _, prompt in pairs(Workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local actText = prompt.ActionText:lower()
-                            local objText = prompt.ObjectText:lower()
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            if actText:find("repair") or actText:find("fix") or objText:find("repair") or objText:find("door") or parentName:find("door") then
-                                local pos = getPromptPos(prompt)
-                                if pos and (root.Position - pos).Magnitude <= 30 then
-                                    interactPrompt(prompt)
-                                end
-                            end
-                        end
-                    end
-                end
-                local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-                if pGui then
-                    for _, element in pairs(pGui:GetDescendants()) do
-                        if (element:IsA("ImageButton") or element:IsA("TextButton") or element:IsA("GuiButton")) and element.Visible then
-                            local name = element.Name:lower()
-                            local text = (element:IsA("TextButton") and element.Text:lower()) or ""
-                            if name:find("repair") or name:find("fix") or text:find("repair") or text:find("fix") then
-                                forceClickGuiButton(element)
-                            end
-                        end
-                    end
-                end
-            end)
+VT:CreateToggle({Name = "ESP Highlights", CurrentValue = false, Callback = function(v)
+    esp = v
+    for _, p in pairs(P:GetPlayers()) do
+        if p ~= LP and p.Character then
+            local hl = p.Character:FindFirstChild("ESP")
+            if v and not hl then applyESP(p) elseif not v and hl then hl:Destroy() end
         end
-        task.wait(0.15)
     end
-end)
+end})
 
-AutomationTab:CreateToggle({
-   Name = "Auto-Collect Gifts & Boxes",
-   CurrentValue = false,
-   Flag = "AutoCollectAuraFlag",
-   Callback = function(Value) autoCollectAura = Value end,
-})
+-- 4. Automation
+AT:CreateButton({Name = "Set Base", Callback = function() if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then baseCFrame = LP.Character.HumanoidRootPart.CFrame R:Notify({Title = "Base Saved", Duration = 2}) end end})
+AT:CreateButton({Name = "Teleport to Base", Callback = function() if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then LP.Character.HumanoidRootPart.CFrame = (baseCFrame or WS.SpawnLocation.CFrame) + Vector3.new(0, 3, 0) end end})
+
+AT:CreateToggle({Name = "Auto-Repair Door", CurrentValue = false, Callback = function(v) autoRep = v end})
+AT:CreateToggle({Name = "Auto-Collect Gifts/Boxes", CurrentValue = false, Callback = function(v) autoCol = v end})
+AT:CreateSlider({Name = "Collect Range", Range = {10, 100}, Increment = 5, CurrentValue = 50, Callback = function(v) colR = v end})
 
 task.spawn(function()
     while true do
-        if autoCollectAura then
+        if (autoRep or autoCol) and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
             pcall(function()
-                local char = LocalPlayer.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    for _, prompt in pairs(Workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local actionText = prompt.ActionText:lower()
-                            local objectText = prompt.ObjectText:lower()
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            
-                            local isBlacklisted = actionText:find("upgrade") or objectText:find("upgrade")
-                                               or actionText:find("convert") or objectText:find("convert")
-                                               or actionText:find("bank") or objectText:find("bank")
-
-                            if not isBlacklisted then
-                                local isTargetItem = actionText:find("open") or actionText:find("take") or actionText:find("collect") or actionText:find("claim")
-                                                  or objectText:find("gift") or objectText:find("present") or objectText:find("box")
-                                                  or parentName:find("gift") or parentName:find("present") or parentName:find("box") or parentName:find("crate")
-
-                                if isTargetItem then
-                                    local pos = getPromptPos(prompt)
-                                    if pos and (root.Position - pos).Magnitude <= collectAuraRange then
-                                        interactPrompt(prompt)
-                                    end
-                                end
+                local rootPos = LP.Character.HumanoidRootPart.Position
+                for _, pr in pairs(WS:GetDescendants()) do
+                    if pr:IsA("ProximityPrompt") then
+                        local txt, ot = pr.ActionText:lower(), pr.ObjectText:lower()
+                        local pos = getPos(pr)
+                        if pos then
+                            if autoRep and (txt:find("repair") or ot:find("repair")) and (rootPos - pos).Magnitude <= 30 then
+                                intPrompt(pr)
+                            elseif autoCol and not (txt:find("upgrade") or ot:find("upgrade") or txt:find("bank")) and (txt:find("open") or txt:find("collect") or ot:find("gift") or ot:find("box")) and (rootPos - pos).Magnitude <= colR then
+                                intPrompt(pr)
                             end
                         end
                     end
