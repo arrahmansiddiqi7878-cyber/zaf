@@ -14,8 +14,10 @@ local VisualsTab = Window:CreateTab("Visuals (ESP)", 4483362458)
 local AutomationTab = Window:CreateTab("Automation", 4483362458)
 
 ---------------------------------------------------------------------
--- HELPER FUNCTIONS
+-- SHARED VARIABLES & HELPER FUNCTIONS
 ---------------------------------------------------------------------
+local savedBaseCFrame = nil
+
 local function getPromptPos(prompt)
     local parent = prompt.Parent
     if not parent then return nil end
@@ -57,13 +59,14 @@ local function forceClickGuiButton(button)
 end
 
 ---------------------------------------------------------------------
--- 1. COMBAT & UTILITY (Noclip, Attack Aura, & God Mode)
+-- 1. COMBAT & UTILITY (Emergency Recall & Far-Range Attack Aura)
 ---------------------------------------------------------------------
 local noclipEnabled = false
 local attackAuraEnabled = false
-local attackRange = 15
-local godModeEnabled = false
-local godConnection = nil
+local attackRange = 50
+local targetMode = "Other Players (Demon Mode)"
+local autoRecallEnabled = false
+local recallCooldown = false
 
 -- Noclip Logic
 game:GetService("RunService").Stepped:Connect(function()
@@ -88,79 +91,68 @@ CombatTab:CreateToggle({
    end,
 })
 
--- God Mode Logic
+-- Emergency Recall (God Protection) Logic
 CombatTab:CreateToggle({
-   Name = "God Mode (Local Protection)",
+   Name = "Emergency Base Teleport (Under 25% HP)",
    CurrentValue = false,
-   Flag = "GodModeFlag",
+   Flag = "GodRecallFlag",
    Callback = function(Value)
-       godModeEnabled = Value
-       local char = game.Players.LocalPlayer.Character
-       local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-       if godModeEnabled then
-           if hum then
-               hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-           end
-
-           godConnection = game:GetService("RunService").RenderStepped:Connect(function()
-               if godModeEnabled then
-                   pcall(function()
-                       local c = game.Players.LocalPlayer.Character
-                       local h = c and c:FindFirstChildOfClass("Humanoid")
-                       if h then
-                           h:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-                           if h.Health < h.MaxHealth then
-                               h.Health = h.MaxHealth
-                           end
-                       end
-                   end)
-               end
-           end)
-       else
-           if godConnection then
-               godConnection:Disconnect()
-               godConnection = nil
-           end
-           if hum then
-               hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
-           end
-       end
+       autoRecallEnabled = Value
    end,
 })
 
--- Attack Aura Logic
-task.spawn(function()
-    while true do
-        if attackAuraEnabled then
-            pcall(function()
-                local char = game.Players.LocalPlayer.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                local tool = char and char:FindFirstChildOfClass("Tool")
+game:GetService("RunService").RenderStepped:Connect(function()
+    if autoRecallEnabled and not recallCooldown then
+        pcall(function()
+            local char = game.Players.LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
 
-                if root and tool then
-                    for _, player in pairs(game.Players:GetPlayers()) do
-                        if player ~= game.Players.LocalPlayer and player.Character then
-                            local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
-                            local targetHum = player.Character:FindFirstChild("Humanoid")
-
-                            if targetRoot and targetHum and targetHum.Health > 0 then
-                                local distance = (root.Position - targetRoot.Position).Magnitude
-                                if distance <= attackRange then
-                                    tool:Activate()
-                                end
-                            end
+            if hum and root and hum.Health > 0 then
+                local hpPercent = (hum.Health / hum.MaxHealth) * 100
+                if hpPercent <= 25 then
+                    recallCooldown = true
+                    
+                    -- Teleport to saved base or default spawn
+                    if savedBaseCFrame then
+                        root.CFrame = savedBaseCFrame + Vector3.new(0, 3, 0)
+                    else
+                        local spawnPoint = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChild("Base")
+                        if spawnPoint then
+                            root.CFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0)
                         end
                     end
+
+                    Rayfield:Notify({
+                        Title = "Emergency Recall Triggered!",
+                        Content = "Health dropped below 25%! Teleported to safety.",
+                        Duration = 4,
+                        Image = 4483362458,
+                    })
+
+                    -- Cooldown to prevent teleport loop
+                    task.delay(5, function()
+                        recallCooldown = false
+                    end)
                 end
-            end)
-        end
-        task.wait(0.15)
+            end
+        end)
     end
 end)
 
+CombatTab:CreateDropdown({
+   Name = "Aura Target Mode",
+   Options = {"Other Players (Demon Mode)", "NPC Monsters", "All (NPCs & Players)"},
+   CurrentOption = {"Other Players (Demon Mode)"},
+   MultipleOptions = false,
+   Flag = "TargetModeDropdown",
+   Callback = function(Option)
+       targetMode = Option[1] or Option
+   end,
+})
+
 CombatTab:CreateToggle({
-   Name = "Demon Attack Aura",
+   Name = "Enable Far-Range Attack Aura",
    CurrentValue = false,
    Flag = "AttackAuraFlag",
    Callback = function(Value)
@@ -169,16 +161,75 @@ CombatTab:CreateToggle({
 })
 
 CombatTab:CreateSlider({
-   Name = "Aura Range (Studs)",
-   Range = {5, 30},
-   Increment = 1,
+   Name = "Attack Range (Studs)",
+   Range = {10, 100},
+   Increment = 5,
    Suffix = "studs",
-   CurrentValue = 15,
+   CurrentValue = 50,
    Flag = "AuraRangeFlag",
    Callback = function(Value)
        attackRange = Value
    end,
 })
+
+task.spawn(function()
+    while true do
+        if attackAuraEnabled then
+            pcall(function()
+                local char = game.Players.LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                
+                local tool = char and char:FindFirstChildOfClass("Tool")
+                if not tool then
+                    local backpack = game.Players.LocalPlayer:FindFirstChild("Backpack")
+                    tool = backpack and backpack:FindFirstChildOfClass("Tool")
+                    if tool and hum then
+                        hum:EquipTool(tool)
+                    end
+                end
+
+                if root and tool then
+                    if targetMode == "Other Players (Demon Mode)" or targetMode == "All (NPCs & Players)" then
+                        for _, player in pairs(game.Players:GetPlayers()) do
+                            if player ~= game.Players.LocalPlayer and player.Character then
+                                local targetRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                                local targetHum = player.Character:FindFirstChildOfClass("Humanoid")
+
+                                if targetRoot and targetHum and targetHum.Health > 0 then
+                                    local dist = (root.Position - targetRoot.Position).Magnitude
+                                    if dist <= attackRange then
+                                        tool:Activate()
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    if targetMode == "NPC Monsters" or targetMode == "All (NPCs & Players)" then
+                        for _, obj in pairs(workspace:GetDescendants()) do
+                            if obj:IsA("Humanoid") and obj.Parent ~= char and obj.Health > 0 then
+                                local targetChar = obj.Parent
+                                local isPlayerChar = game.Players:GetPlayerFromCharacter(targetChar)
+                                
+                                if not isPlayerChar then
+                                    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildWhichIsA("BasePart")
+                                    if targetRoot then
+                                        local dist = (root.Position - targetRoot.Position).Magnitude
+                                        if dist <= attackRange then
+                                            tool:Activate()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        task.wait(0.08)
+    end
+end)
 
 ---------------------------------------------------------------------
 -- 2. MOVEMENT SETTINGS (Persistent Speed Loop)
@@ -233,7 +284,7 @@ VisualsTab:CreateToggle({
                    if not player.Character:FindFirstChild("ESPHighlight") then
                        local highlight = Instance.new("Highlight")
                        highlight.Name = "ESPHighlight"
-                       highlight.FillColor = player:FindFirstChild("IsDemon") and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
+                       highlight.FillColor = Color3.fromRGB(255, 0, 0)
                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
                        highlight.FillTransparency = 0.5
                        highlight.Parent = player.Character
@@ -251,11 +302,10 @@ VisualsTab:CreateToggle({
 })
 
 ---------------------------------------------------------------------
--- 4. AUTOMATION
+-- 4. AUTOMATION (Dynamic Pop-Up Auto-Repair & Box Aura)
 ---------------------------------------------------------------------
 local autoCollectAura = false
 local autoRepair = false
-local savedBaseCFrame = nil
 local collectAuraRange = 50
 
 AutomationTab:CreateButton({
@@ -299,9 +349,9 @@ AutomationTab:CreateButton({
    end,
 })
 
--- Smart Auto-Repair
+-- Dynamic Pop-Up Auto-Repair Loop
 AutomationTab:CreateToggle({
-   Name = "Auto-Repair (Screen Wrench & Doors)",
+   Name = "Auto-Repair (Pop-Up Button Auto-Tap)",
    CurrentValue = false,
    Flag = "AutoRepairFlag",
    Callback = function(Value)
@@ -312,50 +362,33 @@ AutomationTab:CreateToggle({
                    pcall(function()
                        local pGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
                        if pGui then
-                           for _, btn in pairs(pGui:GetDescendants()) do
-                               if (btn:IsA("ImageButton") or btn:IsA("TextButton") or btn:IsA("ImageLabel")) and btn.AbsoluteSize.X > 0 and btn.AbsoluteSize.Y > 0 then
-                                   local name = btn.Name:lower()
-                                   local parentName = btn.Parent and btn.Parent.Name:lower() or ""
-                                   
-                                   if name:find("repair") or name:find("wrench") or parentName:find("repair") or parentName:find("wrench") or name:find("fix") then
-                                       local targetBtn = btn:IsA("ImageLabel") and btn.Parent or btn
-                                       if targetBtn:IsA("GuiButton") then
-                                           forceClickGuiButton(targetBtn)
-                                       end
-                                   end
-                               end
-                           end
-                       end
+                           for _, element in pairs(pGui:GetDescendants()) do
+                               if (element:IsA("ImageButton") or element:IsA("TextButton") or element:IsA("GuiButton")) then
+                                   if element.AbsoluteSize.X > 0 and element.AbsoluteSize.Y > 0 and element.Visible then
+                                       local name = element.Name:lower()
+                                       local parentName = element.Parent and element.Parent.Name:lower() or ""
+                                       local text = (element:IsA("TextButton") and element.Text:lower()) or ""
 
-                       local char = game.Players.LocalPlayer.Character
-                       local root = char and char:FindFirstChild("HumanoidRootPart")
-                       if root then
-                           for _, prompt in pairs(workspace:GetDescendants()) do
-                               if prompt:IsA("ProximityPrompt") then
-                                   local actionText = prompt.ActionText:lower()
-                                   local objectText = prompt.ObjectText:lower()
-                                   
-                                   local isUpgrade = actionText:find("upgrade") or objectText:find("upgrade") or actionText:find("level")
-                                   local isRepair = actionText:find("repair") or actionText:find("fix") or actionText:find("rebuild") or actionText:find("board") or actionText:find("fortify")
-                                   
-                                   if isRepair and not isUpgrade then
-                                       local pos = getPromptPos(prompt)
-                                       if pos and (root.Position - pos).Magnitude <= (prompt.MaxActivationDistance + 10) then
-                                           interactPrompt(prompt)
+                                       local isRepairBtn = name:find("repair") or name:find("fix") or name:find("door") 
+                                                        or parentName:find("repair") or parentName:find("fix") or parentName:find("door")
+                                                        or text:find("repair") or text:find("fix") or text:find("%")
+
+                                       if isRepairBtn then
+                                           forceClickGuiButton(element)
                                        end
                                    end
                                end
                            end
                        end
                    end)
-                   task.wait(0.15)
+                   task.wait(0.03)
                end
            end)
        end
    end,
 })
 
--- Auto-Collect Box Aura
+-- Universal Box & Items Aura
 AutomationTab:CreateToggle({
    Name = "Auto-Collect Box Aura",
    CurrentValue = false,
@@ -374,12 +407,9 @@ AutomationTab:CreateToggle({
                                if prompt:IsA("ProximityPrompt") then
                                    local actionText = prompt.ActionText:lower()
                                    local objectText = prompt.ObjectText:lower()
-                                   local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
                                    
                                    local isUpgrade = actionText:find("upgrade") or objectText:find("upgrade") or actionText:find("level")
-                                   local isBoxOrItem = actionText:find("collect") or actionText:find("take") or actionText:find("grab") or actionText:find("pickup") or actionText:find("open") or objectText:find("box") or objectText:find("crate") or objectText:find("supply") or parentName:find("box") or parentName:find("crate") or parentName:find("supply")
-                                   
-                                   if isBoxOrItem and not isUpgrade then
+                                   if not isUpgrade then
                                        local pos = getPromptPos(prompt)
                                        if pos and (root.Position - pos).Magnitude <= collectAuraRange then
                                            interactPrompt(prompt)
@@ -388,23 +418,19 @@ AutomationTab:CreateToggle({
                                end
                            end
 
-                           for _, obj in pairs(workspace:GetDescendants()) do
-                               if obj:IsA("BasePart") or obj:IsA("Model") then
-                                   local name = obj.Name:lower()
-                                   if name:find("box") or name:find("crate") or name:find("supply") or name:find("drop") then
-                                       local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
-                                       if part and (root.Position - part.Position).Magnitude <= collectAuraRange then
-                                           if firetouchinterest then
-                                               firetouchinterest(root, part, 0)
-                                               firetouchinterest(root, part, 1)
-                                           end
+                           for _, part in pairs(workspace:GetDescendants()) do
+                               if part:IsA("BasePart") and (part:FindFirstChildWhichIsA("TouchTransporter", true) or part.Name:lower():find("box") or part.Name:lower():find("drop") or part.Name:lower():find("crate")) then
+                                   if (root.Position - part.Position).Magnitude <= collectAuraRange then
+                                       if firetouchinterest then
+                                           firetouchinterest(root, part, 0)
+                                           firetouchinterest(root, part, 1)
                                        end
                                    end
                                end
                            end
                        end
                    end)
-                   task.wait(0.2)
+                   task.wait(0.15)
                end
            end)
        end
