@@ -59,7 +59,7 @@ local function forceClickGuiButton(button)
 end
 
 ---------------------------------------------------------------------
--- 1. COMBAT & UTILITY (Emergency Recall & Far-Range Attack Aura)
+-- 1. COMBAT & UTILITY
 ---------------------------------------------------------------------
 local noclipEnabled = false
 local attackAuraEnabled = false
@@ -91,9 +91,38 @@ CombatTab:CreateToggle({
    end,
 })
 
--- Emergency Recall (God Protection) Logic
+---------------------------------------------------------------------
+-- ROLE-AWARE EMERGENCY RECALL SYSTEM
+---------------------------------------------------------------------
+local function getPlayerRole()
+    local player = game.Players.LocalPlayer
+    local char = player.Character
+
+    -- 1. Check Team Name
+    if player.Team then
+        local teamName = player.Team.Name:lower()
+        if teamName:find("demon") then return "Demon" end
+        if teamName:find("human") then return "Human" end
+    end
+
+    -- 2. Check Player/Character Attributes
+    local raceAttr = player:GetAttribute("Race") or (char and char:GetAttribute("Race"))
+    if raceAttr then
+        if tostring(raceAttr):lower():find("demon") then return "Demon" end
+    end
+
+    -- 3. Check for StringValue/Folder named "Race" or "Role"
+    local raceVal = player:FindFirstChild("Race") or (char and char:FindFirstChild("Race"))
+    if raceVal and raceVal:IsA("StringValue") then
+        if raceVal.Value:lower():find("demon") then return "Demon" end
+    end
+
+    -- Default fallback if no tag found
+    return "Human"
+end
+
 CombatTab:CreateToggle({
-   Name = "Emergency Base Teleport (Under 25% HP)",
+   Name = "Emergency Base Teleport (Role-Based)",
    CurrentValue = false,
    Flag = "GodRecallFlag",
    Callback = function(Value)
@@ -101,6 +130,7 @@ CombatTab:CreateToggle({
    end,
 })
 
+-- RenderStepped check loop
 game:GetService("RunService").RenderStepped:Connect(function()
     if autoRecallEnabled and not recallCooldown then
         pcall(function()
@@ -110,27 +140,40 @@ game:GetService("RunService").RenderStepped:Connect(function()
 
             if hum and root and hum.Health > 0 then
                 local hpPercent = (hum.Health / hum.MaxHealth) * 100
-                if hpPercent <= 25 then
+                
+                -- Determine Role and Dynamic Threshold (50% Human / 25% Demon)
+                local currentRole = getPlayerRole()
+                local requiredThreshold = (currentRole == "Demon") and 25 or 50
+                
+                if hpPercent <= requiredThreshold then
                     recallCooldown = true
                     
-                    -- Teleport to saved base or default spawn
+                    -- Determine teleport destination
+                    local targetCFrame = nil
                     if savedBaseCFrame then
-                        root.CFrame = savedBaseCFrame + Vector3.new(0, 3, 0)
+                        targetCFrame = savedBaseCFrame + Vector3.new(0, 3, 0)
                     else
                         local spawnPoint = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChild("Base")
                         if spawnPoint then
-                            root.CFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0)
+                            targetCFrame = spawnPoint.CFrame + Vector3.new(0, 5, 0)
                         end
                     end
 
-                    Rayfield:Notify({
-                        Title = "Emergency Recall Triggered!",
-                        Content = "Health dropped below 25%! Teleported to safety.",
-                        Duration = 4,
-                        Image = 4483362458,
-                    })
+                    -- Execute Teleport & Reset Physics Momentum
+                    if targetCFrame then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                        root.CFrame = targetCFrame
+                        
+                        Rayfield:Notify({
+                            Title = "🚨 EMERGENCY RECALL",
+                            Content = string.format("[%s] HP dropped below %d%%! Teleported to base.", currentRole, requiredThreshold),
+                            Duration = 4,
+                            Image = 4483362458,
+                        })
+                    end
 
-                    -- Cooldown to prevent teleport loop
+                    -- 5-Second Cooldown Safety
                     task.delay(5, function()
                         recallCooldown = false
                     end)
@@ -232,7 +275,7 @@ task.spawn(function()
 end)
 
 ---------------------------------------------------------------------
--- 2. MOVEMENT SETTINGS (Persistent Speed Loop)
+-- 2. MOVEMENT SETTINGS
 ---------------------------------------------------------------------
 local targetWalkSpeed = 16
 local speedLoopEnabled = false
@@ -302,7 +345,7 @@ VisualsTab:CreateToggle({
 })
 
 ---------------------------------------------------------------------
--- 4. AUTOMATION (Dynamic Pop-Up Auto-Repair & Box Aura)
+-- 4. AUTOMATION (Updated for Gifts & Present Boxes)
 ---------------------------------------------------------------------
 local autoCollectAura = false
 local autoRepair = false
@@ -349,9 +392,9 @@ AutomationTab:CreateButton({
    end,
 })
 
--- Dynamic Pop-Up Auto-Repair Loop
+-- Auto-Repair Door
 AutomationTab:CreateToggle({
-   Name = "Auto-Repair (Pop-Up Button Auto-Tap)",
+   Name = "Auto-Repair Door",
    CurrentValue = false,
    Flag = "AutoRepairFlag",
    Callback = function(Value)
@@ -360,37 +403,50 @@ AutomationTab:CreateToggle({
            task.spawn(function()
                while autoRepair do
                    pcall(function()
-                       local pGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
-                       if pGui then
-                           for _, element in pairs(pGui:GetDescendants()) do
-                               if (element:IsA("ImageButton") or element:IsA("TextButton") or element:IsA("GuiButton")) then
-                                   if element.AbsoluteSize.X > 0 and element.AbsoluteSize.Y > 0 and element.Visible then
-                                       local name = element.Name:lower()
-                                       local parentName = element.Parent and element.Parent.Name:lower() or ""
-                                       local text = (element:IsA("TextButton") and element.Text:lower()) or ""
+                       local char = game.Players.LocalPlayer.Character
+                       local root = char and char:FindFirstChild("HumanoidRootPart")
 
-                                       local isRepairBtn = name:find("repair") or name:find("fix") or name:find("door") 
-                                                        or parentName:find("repair") or parentName:find("fix") or parentName:find("door")
-                                                        or text:find("repair") or text:find("fix") or text:find("%")
+                       if root then
+                           for _, prompt in pairs(workspace:GetDescendants()) do
+                               if prompt:IsA("ProximityPrompt") then
+                                   local actText = prompt.ActionText:lower()
+                                   local objText = prompt.ObjectText:lower()
+                                   local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
 
-                                       if isRepairBtn then
-                                           forceClickGuiButton(element)
+                                   if actText:find("repair") or actText:find("fix") or objText:find("repair") or objText:find("door") or parentName:find("door") then
+                                       local pos = getPromptPos(prompt)
+                                       if pos and (root.Position - pos).Magnitude <= 30 then
+                                           interactPrompt(prompt)
                                        end
                                    end
                                end
                            end
                        end
+
+                       local pGui = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+                       if pGui then
+                           for _, element in pairs(pGui:GetDescendants()) do
+                               if (element:IsA("ImageButton") or element:IsA("TextButton") or element:IsA("GuiButton")) and element.Visible then
+                                   local name = element.Name:lower()
+                                   local text = (element:IsA("TextButton") and element.Text:lower()) or ""
+
+                                   if name:find("repair") or name:find("fix") or text:find("repair") or text:find("fix") then
+                                       forceClickGuiButton(element)
+                                   end
+                               end
+                           end
+                       end
                    end)
-                   task.wait(0.03)
+                   task.wait(0.1)
                end
            end)
        end
    end,
 })
 
--- Universal Box & Items Aura
+-- Auto-Collect Gift / Present / Box Aura
 AutomationTab:CreateToggle({
-   Name = "Auto-Collect Box Aura",
+   Name = "Auto-Collect Gifts & Boxes",
    CurrentValue = false,
    Flag = "AutoCollectAuraFlag",
    Callback = function(Value)
@@ -403,48 +459,39 @@ AutomationTab:CreateToggle({
                        local root = char and char:FindFirstChild("HumanoidRootPart")
                        
                        if root then
+                           -- 1. Proximity Prompts (Presents, Gifts, Boxes)
                            for _, prompt in pairs(workspace:GetDescendants()) do
                                if prompt:IsA("ProximityPrompt") then
                                    local actionText = prompt.ActionText:lower()
                                    local objectText = prompt.ObjectText:lower()
+                                   local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
                                    
-                                   local isUpgrade = actionText:find("upgrade") or objectText:find("upgrade") or actionText:find("level")
-                                   if not isUpgrade then
-                                       local pos = getPromptPos(prompt)
-                                       if pos and (root.Position - pos).Magnitude <= collectAuraRange then
-                                           interactPrompt(prompt)
+                                   -- Blacklist currency conversion/ATMs/upgrades
+                                   local isBlacklisted = actionText:find("upgrade") or objectText:find("upgrade")
+                                                      or actionText:find("convert") or objectText:find("convert")
+                                                      or actionText:find("bank") or objectText:find("bank")
+                                                      or actionText:find("atm") or parentName:find("atm")
+                                                      or parentName:find("converter")
+
+                                   if not isBlacklisted then
+                                       local isTargetItem = actionText:find("open") or actionText:find("take") or actionText:find("collect") or actionText:find("claim")
+                                                         or objectText:find("gift") or objectText:find("present") or objectText:find("box")
+                                                         or parentName:find("gift") or parentName:find("present") or parentName:find("box") or parentName:find("crate")
+
+                                       if isTargetItem then
+                                           local pos = getPromptPos(prompt)
+                                           if pos and (root.Position - pos).Magnitude <= collectAuraRange then
+                                               interactPrompt(prompt)
+                                           end
                                        end
                                    end
                                end
                            end
 
+                           -- 2. Physical Parts / Touch Collections (Gifts & Boxes)
                            for _, part in pairs(workspace:GetDescendants()) do
-                               if part:IsA("BasePart") and (part:FindFirstChildWhichIsA("TouchTransporter", true) or part.Name:lower():find("box") or part.Name:lower():find("drop") or part.Name:lower():find("crate")) then
-                                   if (root.Position - part.Position).Magnitude <= collectAuraRange then
-                                       if firetouchinterest then
-                                           firetouchinterest(root, part, 0)
-                                           firetouchinterest(root, part, 1)
-                                       end
-                                   end
-                               end
-                           end
-                       end
-                   end)
-                   task.wait(0.15)
-               end
-           end)
-       end
-   end,
-})
+                               if part:IsA("BasePart") then
+                                   local pName = part.Name:lower()
+                                   local parentName = part.Parent and part.Parent.Name:lower() or ""
 
-AutomationTab:CreateSlider({
-   Name = "Box Aura Range (Studs)",
-   Range = {10, 100},
-   Increment = 5,
-   Suffix = "studs",
-   CurrentValue = 50,
-   Flag = "BoxAuraRangeFlag",
-   Callback = function(Value)
-       collectAuraRange = Value
-   end,
-})
+                                   local isGiftOrBox = pName:find("gift") or pName:find("present") or pName:find("
