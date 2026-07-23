@@ -3,10 +3,22 @@ local W = R:CreateWindow({Name = "BreakDoor Utility Hub", LoadingTitle = "Loadin
 local CT, MT, VT, AT = W:CreateTab("Combat & Utility", 4483362458), W:CreateTab("Movement", 4483362458), W:CreateTab("Visuals (ESP)", 4483362458), W:CreateTab("Automation", 4483362458)
 
 local P, RS, WS, LP = game:GetService("Players"), game:GetService("RunService"), game:GetService("Workspace"), game:GetService("Players").LocalPlayer
-local baseCFrame, noclip, aura, auraR, targetMode, autoRecall, speedLoop, speedVal, esp, autoRep, autoCol, colR = nil, false, false, 50, "Other Players (Demon Mode)", false, false, 16, false, false, 50
+local baseCFrame, noclip, aura, auraR, targetMode, autoRecall, speedLoop, speedVal, esp, autoCol, colR = nil, false, false, 50, "Other Players (Demon Mode)", false, false, 16, false, 50
 
-local function getPos(p) local par = p.Parent return not par and nil or (par:IsA("BasePart") and par.Position or (par:IsA("Model") and par:GetPivot().Position) or (par:IsA("Attachment") and par.WorldPosition) or (par:FindFirstChildWhichIsA("BasePart", true) and par:FindFirstChildWhichIsA("BasePart", true).Position)) end
-local function intPrompt(p) if p and p.Enabled and fireproximityprompt then pcall(function() p.HoldDuration = 0 fireproximityprompt(p) end) end end
+local function getPos(p) 
+    if not p then return nil end
+    if p:IsA("BasePart") then return p.Position end
+    if p:IsA("Model") then return p:GetPivot().Position end
+    if p:IsA("Attachment") then return p.WorldPosition end
+    local bp = p:FindFirstChildWhichIsA("BasePart", true)
+    return bp and bp.Position or nil
+end
+
+local function intPrompt(p) 
+    if p and p.Enabled and fireproximityprompt then 
+        pcall(function() p.HoldDuration = 0 fireproximityprompt(p) end) 
+    end 
+end
 
 -- 1. Combat
 RS.Stepped:Connect(function() if noclip and LP.Character then for _, v in pairs(LP.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end end)
@@ -35,9 +47,8 @@ task.spawn(function()
     while true do
         if aura and LP.Character then
             pcall(function()
-                local root, hum = LP.Character:FindFirstChild("HumanoidRootPart"), LP.Character:FindFirstChildOfClass("Humanoid")
-                local tool = LP.Character:FindFirstChildOfClass("Tool") or (LP.Backpack and LP.Backpack:FindFirstChildOfClass("Tool"))
-                if not LP.Character:FindFirstChildOfClass("Tool") and tool and hum then hum:EquipTool(tool) end
+                local root = LP.Character:FindFirstChild("HumanoidRootPart")
+                local tool = LP.Character:FindFirstChildOfClass("Tool")
                 if root and tool then
                     if targetMode ~= "NPC Monsters" then
                         for _, p in pairs(P:GetPlayers()) do
@@ -91,59 +102,51 @@ end})
 AT:CreateButton({Name = "Set Base", Callback = function() if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then baseCFrame = LP.Character.HumanoidRootPart.CFrame R:Notify({Title = "Base Saved", Duration = 2}) end end})
 AT:CreateButton({Name = "Teleport to Base", Callback = function() if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then LP.Character.HumanoidRootPart.CFrame = (baseCFrame or WS.SpawnLocation.CFrame) + Vector3.new(0, 3, 0) end end})
 
-AT:CreateToggle({Name = "Auto-Repair Door", CurrentValue = false, Callback = function(v) autoRep = v end})
 AT:CreateToggle({Name = "Auto-Collect Gifts/Boxes", CurrentValue = false, Callback = function(v) autoCol = v end})
-AT:CreateSlider({Name = "Collect Range", Range = {10, 100}, Increment = 5, CurrentValue = 50, Callback = function(v) colR = v end})
+AT:CreateSlider({Name = "Collection Range", Range = {20, 500}, Increment = 10, CurrentValue = 100, Callback = function(v) colR = v end})
 
 task.spawn(function()
     while true do
-        if autoRep and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-            pcall(function()
-                local rootPos = LP.Character.HumanoidRootPart.Position
-                for _, pr in pairs(WS:GetDescendants()) do
-                    if pr:IsA("ProximityPrompt") then
-                        local txt, ot = pr.ActionText:lower(), pr.ObjectText:lower()
-                        local parentName = pr.Parent and pr.Parent.Name:lower() or ""
-                        local pos = getPos(pr)
-                        if pos and (rootPos - pos).Magnitude <= 30 then
-                            if txt:find("repair") or txt:find("fix") or ot:find("repair") or ot:find("door") or parentName:find("door") or parentName:find("barrier") then
-                                intPrompt(pr)
-                            end
-                        end
-                    end
-                end
-                
-                local pGui = LP:FindFirstChild("PlayerGui")
-                if pGui then
-                    for _, el in pairs(pGui:GetDescendants()) do
-                        if (el:IsA("ImageButton") or el:IsA("TextButton")) and el.Visible then
-                            local n, t = el.Name:lower(), (el:IsA("TextButton") and el.Text:lower() or "")
-                            if n:find("repair") or n:find("fix") or t:find("repair") or t:find("fix") then
-                                if firesignal then firesignal(el.MouseButton1Click) end
-                                if getconnections then for _, c in pairs(getconnections(el.MouseButton1Click)) do c:Fire() end end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        
         if autoCol and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
             pcall(function()
-                local rootPos = LP.Character.HumanoidRootPart.Position
+                local root = LP.Character.HumanoidRootPart
+                local rootPos = root.Position
+                
                 for _, pr in pairs(WS:GetDescendants()) do
                     if pr:IsA("ProximityPrompt") then
                         local txt, ot = pr.ActionText:lower(), pr.ObjectText:lower()
                         local pos = getPos(pr)
                         if pos and (rootPos - pos).Magnitude <= colR then
                             if not (txt:find("upgrade") or ot:find("upgrade") or txt:find("bank")) and (txt:find("open") or txt:find("collect") or ot:find("gift") or ot:find("box")) then
+                                local oldCFrame = root.CFrame
+                                root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+                                task.wait(0.05)
                                 intPrompt(pr)
+                                task.wait(0.1)
+                                root.CFrame = oldCFrame
+                                task.wait(0.1)
+                            end
+                        end
+                    end
+                end
+
+                for _, obj in pairs(WS:GetDescendants()) do
+                    if obj:IsA("Model") or obj:IsA("BasePart") then
+                        local n = obj.Name:lower()
+                        if n:find("gift") or n:find("box") or n:find("present") or n:find("package") then
+                            local pos = getPos(obj)
+                            if pos and (rootPos - pos).Magnitude <= colR then
+                                local oldCFrame = root.CFrame
+                                root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+                                task.wait(0.15)
+                                root.CFrame = oldCFrame
+                                task.wait(0.1)
                             end
                         end
                     end
                 end
             end)
         end
-        task.wait(0.2)
+        task.wait(0.4)
     end
 end)
