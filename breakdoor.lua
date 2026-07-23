@@ -97,17 +97,46 @@ AT:CreateSlider({Name = "Collect Range", Range = {10, 100}, Increment = 5, Curre
 
 task.spawn(function()
     while true do
-        if (autoRep or autoCol) and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+        if autoRep and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            pcall(function()
+                local rootPos = LP.Character.HumanoidRootPart.Position
+                for _, pr in pairs(WS:GetDescendants()) do
+                    if pr:IsA("ProximityPrompt") then
+                        local txt, ot = pr.ActionText:lower(), pr.ObjectText:lower()
+                        local parentName = pr.Parent and pr.Parent.Name:lower() or ""
+                        local pos = getPos(pr)
+                        if pos and (rootPos - pos).Magnitude <= 30 then
+                            if txt:find("repair") or txt:find("fix") or ot:find("repair") or ot:find("door") or parentName:find("door") or parentName:find("barrier") then
+                                intPrompt(pr)
+                            end
+                        end
+                    end
+                end
+                
+                local pGui = LP:FindFirstChild("PlayerGui")
+                if pGui then
+                    for _, el in pairs(pGui:GetDescendants()) do
+                        if (el:IsA("ImageButton") or el:IsA("TextButton")) and el.Visible then
+                            local n, t = el.Name:lower(), (el:IsA("TextButton") and el.Text:lower() or "")
+                            if n:find("repair") or n:find("fix") or t:find("repair") or t:find("fix") then
+                                if firesignal then firesignal(el.MouseButton1Click) end
+                                if getconnections then for _, c in pairs(getconnections(el.MouseButton1Click)) do c:Fire() end end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        
+        if autoCol and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
             pcall(function()
                 local rootPos = LP.Character.HumanoidRootPart.Position
                 for _, pr in pairs(WS:GetDescendants()) do
                     if pr:IsA("ProximityPrompt") then
                         local txt, ot = pr.ActionText:lower(), pr.ObjectText:lower()
                         local pos = getPos(pr)
-                        if pos then
-                            if autoRep and (txt:find("repair") or ot:find("repair")) and (rootPos - pos).Magnitude <= 30 then
-                                intPrompt(pr)
-                            elseif autoCol and not (txt:find("upgrade") or ot:find("upgrade") or txt:find("bank")) and (txt:find("open") or txt:find("collect") or ot:find("gift") or ot:find("box")) and (rootPos - pos).Magnitude <= colR then
+                        if pos and (rootPos - pos).Magnitude <= colR then
+                            if not (txt:find("upgrade") or ot:find("upgrade") or txt:find("bank")) and (txt:find("open") or txt:find("collect") or ot:find("gift") or ot:find("box")) then
                                 intPrompt(pr)
                             end
                         end
