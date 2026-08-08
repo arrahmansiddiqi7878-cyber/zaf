@@ -21,23 +21,43 @@ Tab:CreateSlider({
    end,
 })
 
--- Advanced ESP Function for Visitors, Entities, and Knockers
+-- Smart Classifier ESP: Red for any Anomaly/Monster, Green for normal human visitors
 local function updateESP()
    for _, obj in pairs(Ws:GetDescendants()) do
       if obj:IsA("Model") and obj ~= LP.Character and not Plrs:GetPlayerFromCharacter(obj) then
-         local name = obj.Name:lower()
-         if obj:FindFirstChild("Humanoid") or obj:FindFirstChild("Head") or name:find("visitor") or name:find("anomaly") or name:find("monster") or name:find("npc") or name:find("character") then
+         -- Check if it's a character/visitor model with structural body parts
+         if obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
             if not obj:FindFirstChild("H") then
                local hl = Instance.new("Highlight")
                hl.Name = "H"
                hl.Adornee = obj
-               -- Color code: Red if anomaly/monster, Green if normal visitor/human
-               if name:find("anomaly") or name:find("monster") or name:find("entity") then
-                  hl.FillColor = Color3.fromRGB(255, 0, 0)
+               
+               local name = obj.Name:lower()
+               -- Scan full ancestry and naming for indicators of an anomaly or monster
+               local isAnomaly = false
+               
+               -- Check object name and child names recursively for anomaly tags
+               if name:find("anomaly") or name:find("monster") or name:find("entity") or name:find("killer") or name:find("demon") or name:find("stranger") or name:find("creature") or name:find("fake") or name:find("goul") then
+                  isAnomaly = true
                else
-                  hl.FillColor = Color3.fromRGB(0, 255, 0)
+                  -- Check descendants inside the model for hidden tags or abnormal parts
+                  for _, child in pairs(obj:GetDescendants()) do
+                     local cname = child.Name:lower()
+                     if cname:find("anomaly") or cname:find("monster") or cname:find("entity") or cname:find("blood") or cname:find("gore") then
+                        isAnomaly = true
+                        break
+                     end
+                  end
                end
-               hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+
+               if isAnomaly then
+                  hl.FillColor = Color3.fromRGB(255, 0, 0) -- RED for Anomaly
+                  hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+               else
+                  hl.FillColor = Color3.fromRGB(0, 255, 0) -- GREEN for Normal Human / Visitor
+                  hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+               end
+               
                hl.Parent = obj
             end
          end
@@ -69,7 +89,7 @@ Run.RenderStepped:Connect(function()
    end)
 end)
 
--- Automation Loop for Breakers, Sanity, and Door Knocks/Peephole/Cameras
+-- Main Automation Loop for Breakers, Sanity, and Door Knocks/Peephole/Cameras
 task.spawn(function()
    while task.wait(0.2) do
       pcall(function()
